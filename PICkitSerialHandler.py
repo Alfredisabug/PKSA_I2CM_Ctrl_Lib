@@ -81,26 +81,31 @@ class PICkitS():
         super(PICkitS, self).__init__()
         self.is_connect = False
 
-    def Device_initialize_PICkitSerial(self):
+    def Device_initialize_PICkitSerial(self) -> bool:
         """
         prototype: bool = Device.Initialize_PICkitSerial()
 
-        :return:
+        :return: bool - whether function is executed success
         """
         status = Device.Initialize_PICkitSerial()
         LOG.debug("device_initialize_PICkitSerial: {}".format(status))
         self.is_connect = status
         return status
 
-    def how_many_PICkitSerials_are_Attached(self):
+    def how_many_PICkitSerials_are_Attached(self) -> int:
+        """
+        prototype: ushort How_Many_PICkitSerials_Are_Attached()
+        Polls USB devices for PKSA productID and vendorID looks for a maximum of 30 devices
+        :return: int - How many PKSA device
+        """
         number = Device.How_Many_PICkitSerials_Are_Attached()
         LOG.debug("Find device number: {}".format(number))
         return number
 
-    def Device_flash_LED1_for_2_seconds(self):
+    def Device_flash_LED1_for_2_seconds(self) -> bool:
         """
             可以讓PICkit亮燈 2 秒
-        :return: bool
+        :return: bool, whether function is executed success
         """
         if not Device.How_Many_PICkitSerials_Are_Attached():
             return False
@@ -108,10 +113,21 @@ class PICkitS():
         LOG.debug("device_flash_LED1_for_2_seconds: {}".format(status))
         return True
 
-    def set_I2C_bit_rate(self, bit_rate):
+    def set_I2C_bit_rate(self, bit_rate: int) -> bool:
+        """
+        prototype: bool Set_I2C_Bit_Rate(double p_Bit_Rate)
+        :param bit_rate: changes byte 23 to coded value using
+                         l_calc_baud = (int)System.Math.Round((double)(CONST.FOSC *1000) / (double)(Baud) / 4.0) - 1;
+        :return: bool, true if baud rate was successfully changed, false if not
+        """
         I2CM.Set_I2C_Bit_Rate(bit_rate)
 
-    def get_I2C_bit_rate(self):
+    def get_I2C_bit_rate(self) -> float:
+        """
+        prototype: double Get_I2C_Bit_Rate()
+        Read Status Packet from PKSA and calculates baud rate from byte 19 of the status block
+        :return: float, Bit rate of PKSA in kHz, returns zero if an error occured
+        """
         return I2CM.Get_I2C_Bit_Rate()
 
     def PMBus_write(self, address: int, cmd: Array, length: int) -> (bool, str):
@@ -126,7 +142,8 @@ class PICkitS():
         :param address int of slave address, if slave address is 0x58, the value is 0xB0
         :param cmd the array includes start address and write data
         :param length int of write data length, must equal to write data length
-        :return: bool, string
+        :return: bool, whether function is executed success
+        :return: string, reference to a string to which will be copied a formatted view of the command
         """
         if not self.is_connect:
             return False, "No connect."
@@ -140,7 +157,7 @@ class PICkitS():
         LOG.debug("PMBus write result: {}".format(result))
         return result[0], "{}".format(result[2])
 
-    def I2C_receive(self, slave_addr: int, read_data_bytes: int) -> (bool, list, str):
+    def I2C_receive(self, slave_addr: int, read_data_bytes: int) -> (bool, typing.List[bytes], str):
         """
         I2C receive用
         prototype:
@@ -148,8 +165,9 @@ class PICkitS():
                                byte p_num_bytes_to_read,
                                ref byte[] p_data_array,
                                ref string p_script_view)
-        :return: bool
-                    whether function executed success.
+        :return: bool, whether function executed success.
+        :return: typing.List[bytes], reference to byte array that will store retrieved data
+        :return: str, reference to a string to which will be copied a formatted view of the command
         """
         if not self.is_connect:
             return False, ["No connect."]
@@ -166,7 +184,7 @@ class PICkitS():
             return_data.append(i)
         return result[0], return_data, "{}".format(result[2])
 
-    def PMBus_read(self, slave_addr: int, start_data_addr: int, read_data_bytes: int) -> (bool, typing.List):
+    def PMBus_read(self, slave_addr: int, start_data_addr: int, read_data_bytes: int) -> (bool, typing.List[bytes]):
         """
         PMBus的read
         prototype:
@@ -175,9 +193,8 @@ class PICkitS():
                             byte p_num_bytes_to_read,
                             ref byte[] p_data_array,
                             ref string p_script_view)
-        :return:
-            bool: whether function executed success.
-            list: list of int
+        :return: bool, whether function executed success.
+                 typing.List[bytes], reference to byte array that will store retrieved data
         """
         if not self.is_connect:
             return False, ["No connect."]
