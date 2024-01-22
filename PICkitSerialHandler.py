@@ -3,7 +3,7 @@
 """
     使用pythonnet建立與PICkitS.dll溝通
     * 使用.net dll，裡面的參數要用c#的偽參數，在import clr的時候就已有import C# runtime的相
-      關type, 因此參數的建立用c# runtime的type來傳入
+    關type, 因此參數的建立用c# runtime的type來傳入
 
     TODO:
         PMBUSWriteWithPEC
