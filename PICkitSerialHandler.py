@@ -67,7 +67,8 @@ else:
     if __name__ == "__main__":
         Reflection.Assembly.LoadFile("{}\\PICkitS.dll".format(path))
     else:
-        Reflection.Assembly.LoadFile("{}\\libs\\PICkitS.dll".format(path))
+        path = os.path.dirname(os.path.abspath(__file__))
+        Reflection.Assembly.LoadFile("{}\\PICkitS.dll".format(path))
     from PICkitS import *
     from System import *
     from System import Array
