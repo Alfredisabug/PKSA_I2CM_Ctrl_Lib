@@ -9,6 +9,8 @@
         PMBUSWriteWithPEC
 
 """
+import enum
+import threading
 import time
 import logging
 import typing
@@ -19,14 +21,14 @@ formatter = "%(asctime)s.%(msecs)03d %(filename)s[line:%(lineno)4d] %(levelname)
 # logging.basicConfig(level=LOGTYPE,
 #                     format='%(asctime)s.%(msecs)03d %(filename)s[line:%(lineno)4d] %(levelname)s %(message)s',
 #                     datefmt='%Y.%m.%d %H:%M:%S')
-LOG = logging.getLogger(__name__)
-LOG.setLevel(LOGLEVEL)
+_PKSA_LOG = logging.getLogger(__name__)
+_PKSA_LOG.setLevel(LOGLEVEL)
 handler = logging.StreamHandler()
 handler.setLevel(LOGLEVEL)
 handler_formatter = logging.Formatter(formatter)
 if LOGLEVEL == logging.DEBUG:
     handler.setFormatter(handler_formatter)
-LOG.addHandler(handler)
+_PKSA_LOG.addHandler(handler)
 
 """ 
     imprt clr: 導入PICKitS.dll的module
@@ -73,33 +75,55 @@ else:
     from System import *
     from System import Array
 
-LOG.debug("pythonnet version: {}".format(clr.__version__))
+_PKSA_LOG.debug("pythonnet version: {}".format(clr.__version__))
+
+
+class ErrorCode(enum.Enum):
+    PKSA_Exec_err = (0, "PICkit Serial Analyzer used dll control error, use [clear_comm_errors] to "
+                        "clear PICkit' error.")
+
+    def __init__(self, code, msg):
+        self.code = code
+        self.msg = msg
 
 
 class PICkitS():
     def __init__(self):
         super(PICkitS, self).__init__()
-        self.is_connect = False
+        self.is_connect = False  # is connected to PKSA
 
     def Device_initialize_PICkitSerial(self) -> bool:
         """
         prototype: bool = Device.Initialize_PICkitSerial()
 
+        Attempts to establish communication with PICkit Serial
+        device and initialize communication threads used by
+        class library.  If multiple devices are attached to
+        host PC, function will only initialize first device
+        it finds.
+
+        prototype: bool Initialize_PICkitSerial(ushort USBIndex)
+
+        Attempts to establish communication with PICkit Serial
+        device and initialize communication threads used by
+        class library.
+
         :return: bool - whether function is executed success
         """
         status = Device.Initialize_PICkitSerial()
-        LOG.debug("device_initialize_PICkitSerial: {}".format(status))
+        _PKSA_LOG.debug("device_initialize_PICkitSerial: {}".format(status))
         self.is_connect = status
         return status
 
-    def how_many_PICkitSerials_are_Attached(self) -> int:
+    @staticmethod
+    def how_many_PICkitSerials_are_Attached() -> int:
         """
         prototype: ushort How_Many_PICkitSerials_Are_Attached()
         Polls USB devices for PKSA productID and vendorID looks for a maximum of 30 devices
         :return: int - How many PKSA device
         """
         number = Device.How_Many_PICkitSerials_Are_Attached()
-        LOG.debug("Find device number: {}".format(number))
+        _PKSA_LOG.debug("Find device number: {}".format(number))
         return number
 
     def Device_flash_LED1_for_2_seconds(self) -> bool:
@@ -109,8 +133,8 @@ class PICkitS():
         """
         if not Device.How_Many_PICkitSerials_Are_Attached():
             return False
-        status = Device.Flash_LED1_For_2_Seconds()
-        LOG.debug("device_flash_LED1_for_2_seconds: {}".format(status))
+        Device.Flash_LED1_For_2_Seconds()
+        time.sleep(2.1)
         return True
 
     def set_I2C_bit_rate(self, bit_rate: int) -> bool:
@@ -120,7 +144,9 @@ class PICkitS():
                          l_calc_baud = (int)System.Math.Round((double)(CONST.FOSC *1000) / (double)(Baud) / 4.0) - 1;
         :return: bool, true if baud rate was successfully changed, false if not
         """
-        I2CM.Set_I2C_Bit_Rate(bit_rate)
+        s = I2CM.Set_I2C_Bit_Rate(bit_rate)
+        _PKSA_LOG.debug("set_I2C_bit_rate: {}".format(s))
+        return s
 
     def get_I2C_bit_rate(self) -> float:
         """
@@ -154,7 +180,7 @@ class PICkitS():
         p_data_array = Array[Byte](cmd[1:])
         p_script_view = String("")
         result = I2CM.Write(p_slave_addr, p_start_data_addr, p_num_bytes_to_write, p_data_array, p_script_view)
-        LOG.debug("PMBus write result: {}".format(result))
+        _PKSA_LOG.debug("PMBus write result: {}".format(result))
         return result[0], "{}".format(result[2])
 
     def I2C_receive(self, slave_addr: int, read_data_bytes: int) -> (bool, typing.List[bytes], str):
@@ -170,7 +196,7 @@ class PICkitS():
         :return: str, reference to a string to which will be copied a formatted view of the command
         """
         if not self.is_connect:
-            return False, ["No connect."]
+            return False, [], "No connect to PKSA."
 
         p_slave_addr = Byte(slave_addr)
         p_num_bytes_to_read = Byte(read_data_bytes)
@@ -205,14 +231,14 @@ class PICkitS():
         p_data_array = Array[Byte]([0] * read_data_bytes)
         p_script_view = String("")
         result = I2CM.Read(p_slave_addr, p_start_data_addr, p_num_bytes_to_read, p_data_array, p_script_view)
-        LOG.debug("I2C Master Read function return: {}".format(result))
+        _PKSA_LOG.debug("I2C Master Read function return: {}".format(result))
         if not result[0]:
             # return result[0], ["{}".format(result[2])]
             return result[0], []
         return_data = []
         for i in result[1]:
             return_data.append(i)
-        LOG.debug("I2C Master read data: {}".format(return_data))
+        _PKSA_LOG.debug("I2C Master read data: {}".format(return_data))
         return result[0], return_data
 
     def special_command_read(self, slave_addr: int,
@@ -240,23 +266,24 @@ class PICkitS():
         p_script_view = String("")
         result = I2CM.Read(p_slave_addr, p_command1, p_command2,
                            p_num_bytes_to_read, p_data_array, p_script_view)
-        LOG.debug("I2C Master Read function return: {}".format(result))
+        _PKSA_LOG.debug("I2C Master Read function return: {}".format(result))
         if not result[0]:
             return result[0], ["{}".format(result[2])]
         return_data = []
         for i in result[1]:
             return_data.append(i)
-        LOG.debug("I2C Master read data: {}".format(return_data))
+        _PKSA_LOG.debug("I2C Master read data: {}".format(return_data))
         return result[0], return_data
 
     def Configure_PICkitSerial_for_I2CMaster(self):
-        status = I2CM.Configure_PICkitSerial_For_I2CMaster(False,
-                                                           False,
-                                                           False,
-                                                           False,
-                                                           True,
-                                                           3.3)
-        LOG.debug("configure_PICkitSerial_for_I2CMaster status: {}".format(status))
+        # status = I2CM.Configure_PICkitSerial_For_I2CMaster(False,
+        #                                                    False,
+        #                                                    False,
+        #                                                    False,
+        #                                                    True,
+        #                                                    3.3)
+        status = I2CM.Configure_PICkitSerial_For_I2CMaster()
+        _PKSA_LOG.debug("configure_PICkitSerial_for_I2CMaster status: {}".format(status))
         return status
 
     def set_read_wait_time(self, p_time):
@@ -274,7 +301,7 @@ class PICkitS():
         """
         version = ""
         status, version = Device.Get_PickitS_DLL_Version(version)
-        LOG.debug("version :{}".format(version))
+        _PKSA_LOG.debug("version :{}".format(version))
         return status, version
 
     def get_script_timeout(self) -> int:
@@ -341,7 +368,7 @@ if __name__ == "__main__":
     PICkit = PICkitS()
     print(PICkit.Device_initialize_PICkitSerial())
     print(PICkit.Configure_PICkitSerial_for_I2CMaster())
-    # print(PICkit.Device_flash_LED1_for_2_seconds())
+    print(PICkit.Device_flash_LED1_for_2_seconds())
 
     # 讀測試 01
     # print(PICkit.PMBus_read(0xB0, 0x55, 2))
